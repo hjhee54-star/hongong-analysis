@@ -24,7 +24,12 @@ COLOR = {
 }
 
 # ── DB 연결 ──────────────────────────────────────────────
-DB_PATH = os.path.join(os.path.dirname(__file__), "HG_add.db")
+# Streamlit Cloud 호환: __file__ 대신 절대경로로 찾기
+_here = os.path.dirname(os.path.abspath(__file__)) if "__file__" in dir() else os.getcwd()
+DB_PATH = os.path.join(_here, "HG_add.db")
+# 못 찾으면 현재 작업 디렉토리에서 재시도
+if not os.path.exists(DB_PATH):
+    DB_PATH = "HG_add.db"
 
 @st.cache_data
 def load(query: str) -> pd.DataFrame:
@@ -47,7 +52,6 @@ grp = grp.sort_values("hongong_group")
 # ── 사이드바 ──────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## 🎭 혼공 분석")
-    st.markdown("**BIP2026 경진대회**")
     st.divider()
     page = st.radio(
         "섹션 선택",
@@ -69,7 +73,7 @@ def grp_colors(groups):
 # 페이지 1 — 연구 개요
 # ════════════════════════════════════════════════════════════
 if page == "📌 연구 개요":
-    st.title("혼공(混空) — 자유인가, 고립인가?")
+    st.title("혼공 — 자유인가, 고립인가?")
     st.markdown("#### 같은 숫자, 다른 현실")
     st.divider()
 
@@ -131,7 +135,111 @@ if page == "📌 연구 개요":
         """)
 
 # ════════════════════════════════════════════════════════════
-# 페이지 2 — STEP 1
+# 페이지 2 — 배경 트렌드
+# ════════════════════════════════════════════════════════════
+elif page == "📈 배경 트렌드":
+    st.title("배경 트렌드 — 1인가구 증가와 혼공률")
+    st.divider()
+
+    st.markdown("### 1인가구 수 추이 (전국, 2017~2024)")
+    hh["만가구"] = (hh["value"] / 10000).round(1)
+    fig_hh2 = go.Figure(go.Scatter(
+        x=hh["year"], y=hh["만가구"],
+        mode="lines+markers+text",
+        line=dict(color=COLOR["자발 혼공자"], width=3),
+        marker=dict(size=8, color=COLOR["자발 혼공자"]),
+        fill="tozeroy",
+        fillcolor="rgba(127,119,221,0.08)",
+        text=[f"{v}만" for v in hh["만가구"]],
+        textposition="top center",
+    ))
+    fig_hh2.update_layout(
+        height=320,
+        xaxis=dict(tickvals=hh["year"].tolist(), ticktext=[str(y) for y in hh["year"]]),
+        yaxis=dict(range=[500, 870], title="만 가구"),
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="Arial"), margin=dict(l=60,r=20,t=20,b=40),
+        showlegend=False,
+    )
+    st.plotly_chart(fig_hh2, use_container_width=True)
+    st.caption("562만(2017) → 804만(2024) · 전체 가구의 35% · 출처: KOSIS")
+
+    st.divider()
+    st.markdown("### 문화예술관람 중 혼공 비율 추이 (국민여가활동조사 원시데이터 가중 집계)")
+
+    trend_data = pd.DataFrame({
+        "연도": [2018, 2019, 2020, 2021, 2022, 2023],
+        "혼공률": [60.5, 57.0, 60.4, 66.8, 54.2, 51.1],
+        "참여율": [70.4, 70.5, 64.3, 46.0, 47.2, 50.8],
+        "코로나": [False, False, True, True, False, False],
+    })
+
+    fig_trend = go.Figure()
+    # 코로나 구간 음영
+    fig_trend.add_vrect(x0=2019.5, x1=2021.5,
+                        fillcolor="rgba(216,90,48,0.08)",
+                        layer="below", line_width=0,
+                        annotation_text="코로나", annotation_position="top left",
+                        annotation_font_color="#D85A30")
+    # 추세선 (코로나 제외)
+    fig_trend.add_trace(go.Scatter(
+        x=[2018,2019,None,2022,2023], y=[60.5,57.0,None,54.2,51.1],
+        mode="lines", line=dict(color=COLOR["동행자 부족 관람 포기층"], width=1.5, dash="dot"),
+        name="코로나 제외 추세", hoverinfo="skip",
+    ))
+    # 실제 혼공률
+    fig_trend.add_trace(go.Scatter(
+        x=trend_data["연도"], y=trend_data["혼공률"],
+        mode="lines+markers+text",
+        line=dict(color=COLOR["자발 혼공자"], width=3),
+        marker=dict(size=[10 if c else 8 for c in trend_data["코로나"]],
+                    color=[COLOR["동행자 부족 관람 포기층"] if c else COLOR["자발 혼공자"]
+                           for c in trend_data["코로나"]]),
+        text=[f"{v}%" for v in trend_data["혼공률"]],
+        textposition="top center",
+        name="혼공률 (가중)",
+    ))
+    fig_trend.update_layout(
+        height=340,
+        xaxis=dict(tickvals=trend_data["연도"].tolist()),
+        yaxis=dict(range=[44,72], title="혼공 비율 (%)"),
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="Arial"),
+        legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
+        margin=dict(l=60,r=20,t=30,b=80),
+    )
+    st.plotly_chart(fig_trend, use_container_width=True)
+
+    st.markdown(
+        f"""<div style='background:{COLOR["bg_purple"]};border-left:4px solid {COLOR["자발 혼공자"]};
+        border-radius:0 8px 8px 0;padding:12px 16px;'>
+        <strong style='color:#3C3489'>반전 포인트:</strong>
+        <span style='color:#3C3489'> 코로나를 제외하면 혼공률은 2018→2023 꾸준히 하락(60.5%→51.1%).
+        1인가구는 우상향인데 혼공은 감소 — "혼공 증가" 담론 이면에 구조적 원인이 있다.</span>
+        </div>""", unsafe_allow_html=True)
+
+    st.divider()
+    st.markdown("### 문화예술관람 참여율 변화")
+    fig_part = go.Figure(go.Bar(
+        x=trend_data["연도"],
+        y=trend_data["참여율"],
+        marker_color=[COLOR["동행자 부족 관람 포기층"] if c else COLOR["비자발 혼공자"]
+                      for c in trend_data["코로나"]],
+        text=[f"{v}%" for v in trend_data["참여율"]],
+        textposition="outside",
+    ))
+    fig_part.update_layout(
+        height=260, yaxis=dict(range=[38,80], title="참여율 (%)"),
+        xaxis=dict(tickvals=trend_data["연도"].tolist()),
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="Arial"), showlegend=False,
+        margin=dict(l=60,r=20,t=10,b=40),
+    )
+    st.plotly_chart(fig_part, use_container_width=True)
+    st.caption("2021년 참여율 46%로 급락 (코로나 영향) — 이때 관람 포기층이 대량 발생했을 가능성")
+
+# ════════════════════════════════════════════════════════════
+# 페이지 3 — STEP 1
 # ════════════════════════════════════════════════════════════
 elif page == "📊 STEP 1 — 두 집단":
     st.title("STEP 1 — 혼공자 안의 두 집단")
@@ -233,7 +341,7 @@ elif page == "📊 STEP 1 — 두 집단":
     st.info("**주목:** 포기층의 사회건강 취약(18.99%)은 자발 혼공자(8.86%)의 2.1배, 정신건강 취약(15.19%)은 4.0배 수준")
 
 # ════════════════════════════════════════════════════════════
-# 페이지 3 — STEP 2
+# 페이지 4 — STEP 2
 # ════════════════════════════════════════════════════════════
 elif page == "🔄 STEP 2 — 교차 패턴":
     st.title("STEP 2 — 두 고립 축의 교차 패턴")
@@ -344,7 +452,7 @@ elif page == "🔄 STEP 2 — 교차 패턴":
     st.caption("버블 크기 = 관람자 수 · 무용(11.76%)·서양음악(9.13%)이 혼공률 높음")
 
 # ════════════════════════════════════════════════════════════
-# 페이지 4 — STEP 3
+# 페이지 5 — STEP 3
 # ════════════════════════════════════════════════════════════
 elif page == "🚫 STEP 3 — 통계 밖":
     st.title("STEP 3 — 가장 고독한 사람은 통계 밖에 있다")
@@ -448,106 +556,4 @@ elif page == "🚫 STEP 3 — 통계 밖":
         "혼공 증가는 가장 고독한 집단의 배제를 은폐할 수 있다"
         </p></div>""", unsafe_allow_html=True)
 
-# ════════════════════════════════════════════════════════════
-# 페이지 5 — 배경 트렌드
-# ════════════════════════════════════════════════════════════
-elif page == "📈 배경 트렌드":
-    st.title("배경 트렌드 — 1인가구 증가와 혼공률")
-    st.divider()
 
-    st.markdown("### 1인가구 수 추이 (전국, 2017~2024)")
-    hh["만가구"] = (hh["value"] / 10000).round(1)
-    fig_hh2 = go.Figure(go.Scatter(
-        x=hh["year"], y=hh["만가구"],
-        mode="lines+markers+text",
-        line=dict(color=COLOR["자발 혼공자"], width=3),
-        marker=dict(size=8, color=COLOR["자발 혼공자"]),
-        fill="tozeroy",
-        fillcolor="rgba(127,119,221,0.08)",
-        text=[f"{v}만" for v in hh["만가구"]],
-        textposition="top center",
-    ))
-    fig_hh2.update_layout(
-        height=320,
-        xaxis=dict(tickvals=hh["year"].tolist(), ticktext=[str(y) for y in hh["year"]]),
-        yaxis=dict(range=[500, 870], title="만 가구"),
-        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="Arial"), margin=dict(l=60,r=20,t=20,b=40),
-        showlegend=False,
-    )
-    st.plotly_chart(fig_hh2, use_container_width=True)
-    st.caption("562만(2017) → 804만(2024) · 전체 가구의 35% · 출처: KOSIS")
-
-    st.divider()
-    st.markdown("### 문화예술관람 중 혼공 비율 추이 (국민여가활동조사 원시데이터 가중 집계)")
-
-    trend_data = pd.DataFrame({
-        "연도": [2018, 2019, 2020, 2021, 2022, 2023],
-        "혼공률": [60.5, 57.0, 60.4, 66.8, 54.2, 51.1],
-        "참여율": [70.4, 70.5, 64.3, 46.0, 47.2, 50.8],
-        "코로나": [False, False, True, True, False, False],
-    })
-
-    fig_trend = go.Figure()
-    # 코로나 구간 음영
-    fig_trend.add_vrect(x0=2019.5, x1=2021.5,
-                        fillcolor="rgba(216,90,48,0.08)",
-                        layer="below", line_width=0,
-                        annotation_text="코로나", annotation_position="top left",
-                        annotation_font_color="#D85A30")
-    # 추세선 (코로나 제외)
-    fig_trend.add_trace(go.Scatter(
-        x=[2018,2019,None,2022,2023], y=[60.5,57.0,None,54.2,51.1],
-        mode="lines", line=dict(color=COLOR["동행자 부족 관람 포기층"], width=1.5, dash="dot"),
-        name="코로나 제외 추세", hoverinfo="skip",
-    ))
-    # 실제 혼공률
-    fig_trend.add_trace(go.Scatter(
-        x=trend_data["연도"], y=trend_data["혼공률"],
-        mode="lines+markers+text",
-        line=dict(color=COLOR["자발 혼공자"], width=3),
-        marker=dict(size=[10 if c else 8 for c in trend_data["코로나"]],
-                    color=[COLOR["동행자 부족 관람 포기층"] if c else COLOR["자발 혼공자"]
-                           for c in trend_data["코로나"]]),
-        text=[f"{v}%" for v in trend_data["혼공률"]],
-        textposition="top center",
-        name="혼공률 (가중)",
-    ))
-    fig_trend.update_layout(
-        height=340,
-        xaxis=dict(tickvals=trend_data["연도"].tolist()),
-        yaxis=dict(range=[44,72], title="혼공 비율 (%)"),
-        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="Arial"),
-        legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
-        margin=dict(l=60,r=20,t=30,b=80),
-    )
-    st.plotly_chart(fig_trend, use_container_width=True)
-
-    st.markdown(
-        f"""<div style='background:{COLOR["bg_purple"]};border-left:4px solid {COLOR["자발 혼공자"]};
-        border-radius:0 8px 8px 0;padding:12px 16px;'>
-        <strong style='color:#3C3489'>반전 포인트:</strong>
-        <span style='color:#3C3489'> 코로나를 제외하면 혼공률은 2018→2023 꾸준히 하락(60.5%→51.1%).
-        1인가구는 우상향인데 혼공은 감소 — "혼공 증가" 담론 이면에 구조적 원인이 있다.</span>
-        </div>""", unsafe_allow_html=True)
-
-    st.divider()
-    st.markdown("### 문화예술관람 참여율 변화")
-    fig_part = go.Figure(go.Bar(
-        x=trend_data["연도"],
-        y=trend_data["참여율"],
-        marker_color=[COLOR["동행자 부족 관람 포기층"] if c else COLOR["비자발 혼공자"]
-                      for c in trend_data["코로나"]],
-        text=[f"{v}%" for v in trend_data["참여율"]],
-        textposition="outside",
-    ))
-    fig_part.update_layout(
-        height=260, yaxis=dict(range=[38,80], title="참여율 (%)"),
-        xaxis=dict(tickvals=trend_data["연도"].tolist()),
-        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="Arial"), showlegend=False,
-        margin=dict(l=60,r=20,t=10,b=40),
-    )
-    st.plotly_chart(fig_part, use_container_width=True)
-    st.caption("2021년 참여율 46%로 급락 (코로나 영향) — 이때 관람 포기층이 대량 발생했을 가능성")
