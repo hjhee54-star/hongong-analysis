@@ -55,7 +55,7 @@ with st.sidebar:
     st.divider()
     page = st.radio(
         "섹션 선택",
-        ["📌 연구 개요", "📊 STEP 1 — 두 집단", "🔄 STEP 2 — 교차 패턴", "🚫 STEP 3 — 통계 밖", "📈 배경 트렌드"],
+        ["📌 연구 개요","📈 배경 트렌드","📊 STEP 1 — 두 집단", "🔄 STEP 2 — 교차 패턴", "🚫 STEP 3 — 통계 밖"],
         index=0,
     )
     st.divider()
